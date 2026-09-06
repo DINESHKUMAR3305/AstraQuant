@@ -37,8 +37,10 @@ def validate_universe(data: pd.DataFrame) -> None:
     if data["exchange"].isna().any():
         raise ValueError("Exchange cannot be empty")
 
-    if data["symbol"].isna().any():
-        raise ValueError("Symbol cannot be empty")
+    if data.duplicated(
+            subset=["exchange", "symbol"]
+    ).any():
+        raise ValueError("Duplicate exchange and symbol combinations found" )
 
     if data["provider_ticker"].isna().any():
         raise ValueError("Provider ticker cannot be empty")
