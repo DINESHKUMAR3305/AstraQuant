@@ -10,105 +10,12 @@ from astraquant.database.repository import (
     get_engine,
 )
 from astraquant.ingestion.bulk_market_data import select_securities
-from astraquant.ingestion.market_data import (
-    NoMarketDataError,
-    ingest_historical_market_data,
-)
-from astraquant.providers.yahoo import YahooFinanceProvider
 from astraquant.ingestion.historical_market_data import (
     load_historical_market_data,
 )
+from astraquant.providers.yahoo import YahooFinanceProvider
 
 logger = logging.getLogger(__name__)
-
-
-def load_historical_market_data(
-    provider,
-    engine,
-    securities,
-    start_date: date,
-    end_date: date,
-    data_source: str = "yahoo_finance",
-) -> dict:
-    """Load historical market data for a batch of securities."""
-
-    successful = 0
-    skipped = 0
-    failed = 0
-    total_rows = 0
-    failures = []
-
-    total_securities = len(securities)
-
-    for index, security in enumerate(securities, start=1):
-        symbol = security["symbol"]
-
-        try:
-            rows = ingest_historical_market_data(
-                provider=provider,
-                engine=engine,
-                exchange=security["exchange"],
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
-                data_source=data_source,
-            )
-
-            if rows > 0:
-                successful += 1
-                total_rows += rows
-
-                message = (
-                    f"[{index}/{total_securities}] "
-                    f"{symbol}: {rows} rows"
-                )
-            else:
-                skipped += 1
-
-                message = (
-                    f"[{index}/{total_securities}] "
-                    f"{symbol}: SKIPPED - no rows"
-                )
-
-            print(message)
-            logger.info(message)
-
-        except NoMarketDataError as exc:
-            skipped += 1
-
-            message = (
-                f"[{index}/{total_securities}] "
-                f"{symbol}: SKIPPED - {exc}"
-            )
-
-            print(message)
-            logger.info(message)
-
-        except Exception as exc:
-            failed += 1
-
-            failure = {
-                "symbol": symbol,
-                "error": str(exc),
-            }
-
-            failures.append(failure)
-
-            message = (
-                f"[{index}/{total_securities}] "
-                f"{symbol}: FAILED - {exc}"
-            )
-
-            print(message)
-            logger.error(message)
-
-    return {
-        "successful": successful,
-        "skipped": skipped,
-        "failed": failed,
-        "total_rows": total_rows,
-        "failures": failures,
-    }
 
 
 def main():
@@ -121,31 +28,37 @@ def main():
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
-    if len(sys.argv) not in (3, 4, 5):
-        raise ValueError(
-            "Usage: python scripts/load_historical_market_data.py "
-            "START_DATE END_DATE [LIMIT] [OFFSET]"
-        )
+    start_date = date.fromisoformat(
+        os.environ["HISTORICAL_START_DATE"]
+    )
+    end_date = date.fromisoformat(
+        os.environ["HISTORICAL_END_DATE"]
+    )
 
-    start_date = date.fromisoformat(sys.argv[1])
-    end_date = date.fromisoformat(sys.argv[2])
+    batch_size = int(
+        os.getenv("HISTORICAL_BATCH_SIZE", "25")
+    )
+
+    offset = int(sys.argv[1]) if len(sys.argv) >= 2 else 0
+
+    if len(sys.argv) > 2:
+        raise ValueError(
+            "Usage: python scripts/load_historical_market_data.py [OFFSET]"
+        )
 
     if start_date >= end_date:
         raise ValueError(
-            "START_DATE must be before END_DATE"
+            "HISTORICAL_START_DATE must be before "
+            "HISTORICAL_END_DATE"
         )
 
-    limit = (
-        int(sys.argv[3])
-        if len(sys.argv) >= 4
-        else None
-    )
+    if batch_size <= 0:
+        raise ValueError(
+            "HISTORICAL_BATCH_SIZE must be greater than zero"
+        )
 
-    offset = (
-        int(sys.argv[4])
-        if len(sys.argv) == 5
-        else 0
-    )
+    if offset < 0:
+        raise ValueError("OFFSET cannot be negative")
 
     database_url = os.getenv("DATABASE_URL")
 
@@ -166,8 +79,7 @@ def main():
 
     if provider_name != "yahoo_finance":
         raise ValueError(
-            f"Unsupported market data provider: "
-            f"{provider_name}"
+            f"Unsupported market data provider: {provider_name}"
         )
 
     engine = get_engine(database_url)
@@ -176,7 +88,7 @@ def main():
 
     securities = select_securities(
         all_securities,
-        limit=limit,
+        limit=batch_size,
         offset=offset,
     )
 
@@ -190,7 +102,10 @@ def main():
     print(
         f"Processing {len(securities)} securities"
     )
-    print(f"Date range: {start_date} → {end_date}")
+    print(
+        f"Date range: {start_date} → {end_date}"
+    )
+    print(f"Batch size: {batch_size}")
     print(f"Offset:     {offset}")
     print(f"Provider:   {provider_name}")
     print(f"Data source: {data_source}")

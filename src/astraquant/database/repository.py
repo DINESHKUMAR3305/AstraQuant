@@ -1,6 +1,7 @@
+from datetime import date, timedelta
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
-
+from astraquant.market_calendar import is_nse_trading_day
 
 def get_engine(database_url: str) -> Engine:
     return create_engine(database_url)
@@ -208,3 +209,33 @@ def get_latest_price_date(engine, security_id: int):
             query,
             {"security_id": security_id},
         ).scalar_one()
+
+def has_historical_data_coverage(
+    engine,
+    security_id: int,
+    end_date,
+    exchange: str = "NSE",
+) -> bool:
+    """Return True when data exists through the latest expected trading day."""
+    expected_date = end_date - timedelta(days=1)
+
+    if exchange == "NSE":
+        while not is_nse_trading_day(expected_date):
+            expected_date -= timedelta(days=1)
+
+    query = text("""
+        SELECT MAX(trading_date)
+        FROM daily_prices
+        WHERE security_id = :security_id
+    """)
+
+    with engine.connect() as connection:
+        latest_date = connection.execute(
+            query,
+            {"security_id": security_id},
+        ).scalar_one()
+
+    if latest_date is None:
+        return False
+
+    return latest_date >= expected_date

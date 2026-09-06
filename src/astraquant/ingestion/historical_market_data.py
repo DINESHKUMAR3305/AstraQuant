@@ -1,12 +1,16 @@
 import logging
 from datetime import date
 
+from astraquant.database.repository import (
+    get_security_id,
+    has_historical_data_coverage,
+)
+
 from astraquant.ingestion.market_data import (
     NoMarketDataError,
     ingest_historical_market_data,
 )
 from astraquant.providers.base import MarketDataProvider
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,30 @@ def load_historical_market_data(
         symbol = security["symbol"]
 
         try:
+            security_id = get_security_id(
+                engine,
+                exchange=security["exchange"],
+                symbol=symbol,
+            )
+
+            if has_historical_data_coverage(
+                engine,
+                security_id,
+                end_date,
+                exchange=security["exchange"],
+            ):
+                skipped += 1
+
+                message = (
+                    f"[{index}/{total_securities}] "
+                    f"{symbol}: SKIPPED - "
+                    "historical data already complete"
+                )
+
+                print(message)
+                logger.info(message)
+                continue
+
             rows = ingest_historical_market_data(
                 provider=provider,
                 engine=engine,
