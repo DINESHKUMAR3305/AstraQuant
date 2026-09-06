@@ -69,3 +69,31 @@ def test_ingest_bulk_market_data_counts_skipped():
     assert result["failed"] == 0
     assert result["total_rows"] == 4
 
+def test_bulk_ingestion_counts_zero_rows_as_skipped():
+    provider = Mock()
+    engine = Mock()
+
+    securities = [
+        {
+            "exchange": "NSE",
+            "symbol": "INFY",
+        }
+    ]
+
+    with patch(
+        "astraquant.ingestion.bulk_market_data.ingest_market_data",
+        return_value=0,
+    ):
+        result = ingest_bulk_market_data(
+            provider=provider,
+            engine=engine,
+            securities=securities,
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 6),
+        )
+
+    assert result["successful"] == 0
+    assert result["skipped"] == 1
+    assert result["failed"] == 0
+    assert result["total_rows"] == 0
+

@@ -67,16 +67,28 @@ def ingest_bulk_market_data(
                 data_source=data_source,
             )
 
-            successful += 1
-            total_rows += rows
+            if rows > 0:
+                successful += 1
+                total_rows += rows
 
-            message = (
-                f"[{index}/{total_securities}] "
-                f"{symbol}: {rows} rows"
-            )
+                message = (
+                    f"[{index}/{total_securities}] "
+                    f"{symbol}: {rows} rows"
+                )
 
-            print(message)
-            logger.info(message)
+                print(message)
+                logger.info(message)
+
+            else:
+                skipped += 1
+
+                message = (
+                    f"[{index}/{total_securities}] "
+                    f"{symbol}: SKIPPED - no new rows"
+                )
+
+                print(message)
+                logger.info(message)
 
         except NoMarketDataError as exc:
             skipped += 1
