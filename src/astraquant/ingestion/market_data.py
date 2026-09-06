@@ -1,5 +1,8 @@
+import os
 import time
 from datetime import date
+
+from dotenv import load_dotenv
 
 from astraquant.data.validation import validate_daily_prices
 from astraquant.database.repository import (
@@ -8,6 +11,12 @@ from astraquant.database.repository import (
     insert_daily_prices,
 )
 from astraquant.providers.base import MarketDataProvider
+
+
+load_dotenv("config/market_data.env")
+
+RETRY_ATTEMPTS = int(os.getenv("MARKET_DATA_RETRY_ATTEMPTS", "3"))
+RETRY_DELAY = int(os.getenv("MARKET_DATA_RETRY_DELAY", "2"))
 
 
 def ingest_market_data(
@@ -36,10 +45,9 @@ def ingest_market_data(
         symbol=symbol,
     )
 
-    max_attempts = 3
     data = None
 
-    for attempt in range(1, max_attempts + 1):
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
             data = provider.fetch_daily_prices(
                 ticker,
@@ -49,15 +57,15 @@ def ingest_market_data(
             break
 
         except Exception:
-            if attempt == max_attempts:
+            if attempt == RETRY_ATTEMPTS:
                 raise
 
             print(
-                f"{symbol}: attempt {attempt}/{max_attempts} failed, "
+                f"{symbol}: attempt {attempt}/{RETRY_ATTEMPTS} failed, "
                 "retrying..."
             )
 
-            time.sleep(2)
+            time.sleep(RETRY_DELAY)
 
     validate_daily_prices(data)
 

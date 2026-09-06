@@ -1,6 +1,6 @@
+import logging
 import os
 import sys
-import logging
 from datetime import date
 
 from dotenv import load_dotenv
@@ -11,28 +11,47 @@ from astraquant.providers.yahoo import YahooFinanceProvider
 
 
 def main():
+    load_dotenv()
+    load_dotenv("config/market_data.env")
+
     logging.basicConfig(
         filename="logs/market_data_ingestion.log",
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
+
     if len(sys.argv) not in (3, 4):
         raise ValueError(
-                "Usage: python scripts/load_bulk_market_data.py START_DATE END_DATE [LIMIT]"
-                )
+            "Usage: python scripts/load_bulk_market_data.py "
+            "START_DATE END_DATE [LIMIT]"
+        )
+
     start_date = date.fromisoformat(sys.argv[1])
     end_date = date.fromisoformat(sys.argv[2])
-
-    limit = int(sys.argv[3]) if len(sys.argv) == 4 else None
 
     if start_date >= end_date:
         raise ValueError("START_DATE must be before END_DATE")
 
-    load_dotenv()
+    limit = int(sys.argv[3]) if len(sys.argv) == 4 else None
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL is not configured")
+
+    provider_name = os.getenv(
+        "MARKET_DATA_PROVIDER",
+        "yahoo_finance",
+    )
+
+    data_source = os.getenv(
+        "MARKET_DATA_SOURCE",
+        "yahoo_finance",
+    )
+
+    if provider_name != "yahoo_finance":
+        raise ValueError(
+            f"Unsupported market data provider: {provider_name}"
+        )
 
     engine = get_engine(database_url)
 
@@ -40,7 +59,10 @@ def main():
 
     if limit is not None:
         securities = securities[:limit]
+
     print(f"Processing {len(securities)} securities")
+    print(f"Provider: {provider_name}")
+    print(f"Data source: {data_source}")
 
     provider = YahooFinanceProvider()
 
@@ -50,7 +72,7 @@ def main():
         securities=securities,
         start_date=start_date,
         end_date=end_date,
-        data_source="yahoo_finance",
+        data_source=data_source,
     )
 
     print("\nIngestion Summary")
