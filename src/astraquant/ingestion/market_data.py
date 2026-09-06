@@ -14,19 +14,52 @@ from astraquant.database.repository import (
 from astraquant.market_calendar import is_nse_trading_day
 from astraquant.providers.base import MarketDataProvider
 
-
 load_dotenv("config/market_data.env")
 
-RETRY_ATTEMPTS = int(
-    os.getenv("MARKET_DATA_RETRY_ATTEMPTS", "3")
-)
-RETRY_DELAY = int(
-    os.getenv("MARKET_DATA_RETRY_DELAY", "2")
-)
+RETRY_ATTEMPTS = int(os.getenv("MARKET_DATA_RETRY_ATTEMPTS", "3"))
+RETRY_DELAY = int(os.getenv("MARKET_DATA_RETRY_DELAY", "2"))
 
 
 class NoMarketDataError(Exception):
     """Raised when no trading data exists in the requested date range."""
+
+
+def _fetch_market_data(
+    provider: MarketDataProvider,
+    ticker: str,
+    start_date: date,
+    end_date: date,
+):
+    """Fetch market data with retry handling."""
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            return provider.fetch_daily_prices(
+                ticker,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except ValueError as exc:
+            if "within requested range" in str(exc):
+                raise NoMarketDataError(str(exc)) from exc
+
+            if attempt == RETRY_ATTEMPTS:
+                raise
+
+            print(
+                f"{ticker}: attempt {attempt}/{RETRY_ATTEMPTS} "
+                "failed, retrying..."
+            )
+            time.sleep(RETRY_DELAY)
+
+        except Exception:
+            if attempt == RETRY_ATTEMPTS:
+                raise
+
+            print(
+                f"{ticker}: attempt {attempt}/{RETRY_ATTEMPTS} "
+                "failed, retrying..."
+            )
+            time.sleep(RETRY_DELAY)
 
 
 def ingest_market_data(
@@ -39,7 +72,6 @@ def ingest_market_data(
     data_source: str = "yahoo_finance",
 ) -> int:
     """Fetch, validate, and store incremental market data."""
-
     if start_date >= end_date:
         raise ValueError("start_date must be before end_date")
 
@@ -49,10 +81,7 @@ def ingest_market_data(
         symbol=symbol,
     )
 
-    latest_date = get_latest_price_date(
-        engine,
-        security_id,
-    )
+    latest_date = get_latest_price_date(engine, security_id)
 
     if latest_date is not None:
         start_date = max(
@@ -69,7 +98,6 @@ def ingest_market_data(
         while current_date < end_date:
             if is_nse_trading_day(current_date):
                 break
-
             current_date += timedelta(days=1)
         else:
             return 0
@@ -82,41 +110,12 @@ def ingest_market_data(
         symbol=symbol,
     )
 
-    data = None
-
-    for attempt in range(1, RETRY_ATTEMPTS + 1):
-        try:
-            data = provider.fetch_daily_prices(
-                ticker,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            break
-
-        except ValueError as exc:
-            if "within requested range" in str(exc):
-                raise NoMarketDataError(str(exc)) from exc
-
-            if attempt == RETRY_ATTEMPTS:
-                raise
-
-            print(
-                f"{symbol}: attempt {attempt}/{RETRY_ATTEMPTS} "
-                "failed, retrying..."
-            )
-
-            time.sleep(RETRY_DELAY)
-
-        except Exception:
-            if attempt == RETRY_ATTEMPTS:
-                raise
-
-            print(
-                f"{symbol}: attempt {attempt}/{RETRY_ATTEMPTS} "
-                "failed, retrying..."
-            )
-
-            time.sleep(RETRY_DELAY)
+    data = _fetch_market_data(
+        provider,
+        ticker,
+        start_date,
+        end_date,
+    )
 
     validate_daily_prices(data)
 
@@ -140,7 +139,6 @@ def ingest_historical_market_data(
     data_source: str = "yahoo_finance",
 ) -> int:
     """Fetch, validate, and store historical market data."""
-
     if start_date >= end_date:
         raise ValueError("start_date must be before end_date")
 
@@ -156,41 +154,12 @@ def ingest_historical_market_data(
         symbol=symbol,
     )
 
-    data = None
-
-    for attempt in range(1, RETRY_ATTEMPTS + 1):
-        try:
-            data = provider.fetch_daily_prices(
-                ticker,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            break
-
-        except ValueError as exc:
-            if "within requested range" in str(exc):
-                raise NoMarketDataError(str(exc)) from exc
-
-            if attempt == RETRY_ATTEMPTS:
-                raise
-
-            print(
-                f"{symbol}: attempt {attempt}/{RETRY_ATTEMPTS} "
-                "failed, retrying..."
-            )
-
-            time.sleep(RETRY_DELAY)
-
-        except Exception:
-            if attempt == RETRY_ATTEMPTS:
-                raise
-
-            print(
-                f"{symbol}: attempt {attempt}/{RETRY_ATTEMPTS} "
-                "failed, retrying..."
-            )
-
-            time.sleep(RETRY_DELAY)
+    data = _fetch_market_data(
+        provider,
+        ticker,
+        start_date,
+        end_date,
+    )
 
     validate_daily_prices(data)
 
