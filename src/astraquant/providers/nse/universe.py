@@ -5,14 +5,20 @@ import pandas as pd
 
 REQUIRED_COLUMNS = {
     "symbol",
-    "company_name",
+    "name_of_company",
+    "series",
+    "date_of_listing",
+    "paid_up_value",
+    "market_lot",
+    "isin_number",
+    "face_value",
 }
 
 
 def load_nse_universe_file(
     file_path: str | Path,
 ) -> pd.DataFrame:
-    """Load an NSE universe CSV and normalize its columns."""
+    """Load and normalize the NSE equity security master."""
 
     path = Path(file_path)
 
@@ -23,6 +29,7 @@ def load_nse_universe_file(
 
     data = pd.read_csv(path)
 
+    # Normalize NSE column names.
     data.columns = [
         column.strip().lower().replace(" ", "_")
         for column in data.columns
@@ -36,20 +43,66 @@ def load_nse_universe_file(
         )
 
     data = data[
-        ["symbol", "company_name"]
+        [
+            "symbol",
+            "name_of_company",
+            "series",
+            "date_of_listing",
+            "paid_up_value",
+            "market_lot",
+            "isin_number",
+            "face_value",
+        ]
     ].copy()
 
+    # Initial AstraQuant universe: normal NSE equity series.
+    data = data[
+        data["series"].astype(str).str.upper() == "EQ"
+    ].copy()
+
+    # Convert listing date to a Python date.
+    data["date_of_listing"] = pd.to_datetime(
+        data["date_of_listing"],
+        format="%d-%b-%Y",
+        errors="raise",
+    ).dt.date
+
+    # Normalize text fields.
+    data["symbol"] = (
+        data["symbol"].astype(str).str.strip()
+    )
+
+    data["name_of_company"] = (
+        data["name_of_company"].astype(str).str.strip()
+    )
+
+    data["series"] = (
+        data["series"].astype(str).str.strip()
+    )
+
+    data["isin_number"] = (
+        data["isin_number"].astype(str).str.strip()
+    )
+
+    # NSE is the exchange.
     data["exchange"] = "NSE"
 
+    # Yahoo Finance provider ticker.
     data["provider_ticker"] = (
-        data["symbol"].astype(str) + ".NS"
+        data["symbol"] + ".NS"
     )
 
     return data[
         [
-            "company_name",
+            "name_of_company",
             "exchange",
             "symbol",
             "provider_ticker",
+            "isin_number",
+            "series",
+            "date_of_listing",
+            "paid_up_value",
+            "market_lot",
+            "face_value",
         ]
     ]
