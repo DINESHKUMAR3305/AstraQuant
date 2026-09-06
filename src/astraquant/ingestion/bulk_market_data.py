@@ -3,7 +3,10 @@ from datetime import date
 
 from astraquant.ingestion.market_data import ingest_market_data
 from astraquant.providers.base import MarketDataProvider
-
+from astraquant.ingestion.market_data import (
+    NoMarketDataError,
+    ingest_market_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,7 @@ def ingest_bulk_market_data(
 
     successful = 0
     failed = 0
+    skipped = 0
     total_rows = 0
     failures = []
 
@@ -49,6 +53,17 @@ def ingest_bulk_market_data(
 
             print(message)
             logger.info(message)
+            
+        except NoMarketDataError as exc:
+            skipped += 1
+
+            message = (
+                f"[{index}/{total_securities}] "
+                f"{symbol}: SKIPPED - {exc}"
+            )
+
+            print(message)
+            logger.info(message)
 
         except Exception as exc:
             failed += 1
@@ -71,6 +86,7 @@ def ingest_bulk_market_data(
     summary = {
         "successful": successful,
         "failed": failed,
+        "skipped": skipped,
         "total_rows": total_rows,
         "failures": failures,
     }

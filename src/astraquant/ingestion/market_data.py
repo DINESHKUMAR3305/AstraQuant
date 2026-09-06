@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from astraquant.data.validation import validate_daily_prices
 from astraquant.database.repository import (
+    get_latest_price_date,
     get_provider_ticker,
     get_security_id,
     insert_daily_prices,
@@ -17,6 +18,10 @@ load_dotenv("config/market_data.env")
 
 RETRY_ATTEMPTS = int(os.getenv("MARKET_DATA_RETRY_ATTEMPTS", "3"))
 RETRY_DELAY = int(os.getenv("MARKET_DATA_RETRY_DELAY", "2"))
+
+
+class NoMarketDataError(Exception):
+    """Raised when no trading data exists in the requested date range."""
 
 
 def ingest_market_data(
@@ -39,6 +44,20 @@ def ingest_market_data(
         symbol=symbol,
     )
 
+    latest_date = get_latest_price_date(
+        engine,
+        security_id,
+    )
+
+    if latest_date is not None:
+        start_date = max(
+            start_date,
+            latest_date.fromordinal(latest_date.toordinal() + 1),
+        )
+
+    if start_date >= end_date:
+        return 0
+
     ticker = get_provider_ticker(
         engine,
         exchange=exchange,
@@ -55,6 +74,20 @@ def ingest_market_data(
                 end_date=end_date,
             )
             break
+
+        except ValueError as exc:
+            if "within requested range" in str(exc):
+                raise NoMarketDataError(str(exc)) from exc
+
+            if attempt == RETRY_ATTEMPTS:
+                raise
+
+            print(
+                f"{symbol}: attempt {attempt}/{RETRY_ATTEMPTS} failed, "
+                "retrying..."
+            )
+
+            time.sleep(RETRY_DELAY)
 
         except Exception:
             if attempt == RETRY_ATTEMPTS:

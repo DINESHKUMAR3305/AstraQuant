@@ -192,3 +192,19 @@ def get_all_securities(
         rows = connection.execute(query).mappings().all()
 
     return [dict(row) for row in rows]
+
+
+def get_latest_price_date(engine, security_id: int):
+    """Return the latest trading date stored for a security."""
+
+    query = text("""
+        SELECT MAX(trading_date)
+        FROM daily_prices
+        WHERE security_id = :security_id
+    """)
+
+    with engine.connect() as connection:
+        return connection.execute(
+            query,
+            {"security_id": security_id},
+        ).scalar_one()

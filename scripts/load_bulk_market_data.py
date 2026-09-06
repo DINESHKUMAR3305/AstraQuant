@@ -78,6 +78,7 @@ def main():
     print("\nIngestion Summary")
     print("-----------------")
     print(f"Successful: {result['successful']}")
+    print(f"Skipped:    {result['skipped']}")
     print(f"Failed:     {result['failed']}")
     print(f"Total rows: {result['total_rows']}")
 

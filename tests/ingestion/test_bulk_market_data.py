@@ -2,7 +2,7 @@ from datetime import date
 from unittest.mock import Mock, patch
 
 from astraquant.ingestion.bulk_market_data import ingest_bulk_market_data
-
+from astraquant.ingestion.market_data import NoMarketDataError
 
 def test_ingest_bulk_market_data_continues_after_failure():
     provider = Mock()
@@ -39,3 +39,33 @@ def test_ingest_bulk_market_data_continues_after_failure():
     ]
 
     assert mock_ingest.call_count == 3
+
+def test_ingest_bulk_market_data_counts_skipped():
+    provider = Mock()
+    engine = Mock()
+
+    securities = [
+        {"exchange": "NSE", "symbol": "RELIANCE"},
+        {"exchange": "NSE", "symbol": "TCS"},
+    ]
+
+    with patch(
+        "astraquant.ingestion.bulk_market_data.ingest_market_data",
+        side_effect=[
+            NoMarketDataError("weekend"),
+            4,
+        ],
+    ):
+        result = ingest_bulk_market_data(
+            provider=provider,
+            engine=engine,
+            securities=securities,
+            start_date=date(2026, 9, 5),
+            end_date=date(2026, 9, 6),
+        )
+
+    assert result["successful"] == 1
+    assert result["skipped"] == 1
+    assert result["failed"] == 0
+    assert result["total_rows"] == 4
+
