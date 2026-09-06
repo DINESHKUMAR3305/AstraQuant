@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import date
+from datetime import date, timedelta
 
 from dotenv import load_dotenv
 
@@ -11,6 +11,7 @@ from astraquant.database.repository import (
     get_security_id,
     insert_daily_prices,
 )
+from astraquant.market_calendar import is_nse_trading_day
 from astraquant.providers.base import MarketDataProvider
 
 
@@ -52,11 +53,24 @@ def ingest_market_data(
     if latest_date is not None:
         start_date = max(
             start_date,
-            latest_date.fromordinal(latest_date.toordinal() + 1),
+            latest_date + timedelta(days=1),
         )
 
     if start_date >= end_date:
         return 0
+
+    if exchange == "NSE":
+        current_date = start_date
+
+        while current_date < end_date:
+            if is_nse_trading_day(current_date):
+                break
+
+            current_date += timedelta(days=1)
+        else:
+            return 0
+
+        start_date = current_date
 
     ticker = get_provider_ticker(
         engine,
