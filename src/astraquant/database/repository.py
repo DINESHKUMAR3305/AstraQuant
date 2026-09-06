@@ -12,19 +12,18 @@ def create_company(
     isin: str | None = None,
 ) -> int:
     query = text("""
-        INSERT INTO companies (company_id, name, isin)
-        VALUES (
-            (SELECT COALESCE(MAX(company_id), 0) + 1 FROM companies),
-            :name,
-            :isin
-        )
+        INSERT INTO companies (name, isin)
+        VALUES (:name, :isin)
         RETURNING company_id
     """)
 
     with engine.begin() as connection:
         company_id = connection.execute(
             query,
-            {"name": name, "isin": isin},
+            {
+                "name": name,
+                "isin": isin,
+            },
         ).scalar_one()
 
     return company_id
@@ -38,13 +37,11 @@ def create_security(
 ) -> int:
     query = text("""
         INSERT INTO securities (
-            security_id,
             company_id,
             exchange,
             symbol
         )
         VALUES (
-            (SELECT COALESCE(MAX(security_id), 0) + 1 FROM securities),
             :company_id,
             :exchange,
             :symbol
