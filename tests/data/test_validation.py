@@ -54,3 +54,38 @@ def test_rejects_negative_volume():
 
     with pytest.raises(ValueError, match="Volume cannot be negative"):
         validate_daily_prices(data)
+
+
+def test_rejects_high_lower_than_low():
+    data = valid_data()
+    data.loc[0, "high"] = 98.0
+
+    with pytest.raises(
+        ValueError,
+        match="High price cannot be lower than low price",
+    ):
+        validate_daily_prices(data)
+
+
+def test_rejects_high_lower_than_open():
+    data = valid_data()
+    data.loc[0, "high"] = 99.0
+
+    with pytest.raises(
+        ValueError,
+        match="High price cannot be lower than open price",
+    ):
+        validate_daily_prices(data)
+
+
+def test_rejects_low_higher_than_close():
+    data = valid_data()
+
+    data.loc[0, "open"] = 104.0
+    data.loc[0, "low"] = 103.5
+
+    with pytest.raises(
+        ValueError,
+        match="Low price cannot be higher than close price",
+    ):
+        validate_daily_prices(data)
