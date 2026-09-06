@@ -1,8 +1,12 @@
+import pandas as pd
 from datetime import date
+
 from unittest.mock import Mock, patch
 
 from astraquant.ingestion.market_data import ingest_market_data
-
+from astraquant.ingestion.market_data import (
+    ingest_historical_market_data,
+)
 
 def test_ingest_market_data():
     provider = Mock()
@@ -143,4 +147,50 @@ def test_ingest_market_data_skips_nse_weekend_before_provider_call():
     assert result == 0
     provider.fetch_daily_prices.assert_not_called()
 
+def test_ingest_historical_market_data_does_not_use_latest_date():
+    provider = Mock()
+    engine = Mock()
 
+    historical_data = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2025-09-01", "2025-09-02"]
+            ).date,
+            "open": [100.0, 101.0],
+            "high": [102.0, 103.0],
+            "low": [99.0, 100.0],
+            "close": [101.0, 102.0],
+            "volume": [1000, 1200],
+        }
+    )
+
+    provider.fetch_daily_prices.return_value = historical_data
+
+    with patch(
+        "astraquant.ingestion.market_data.get_security_id",
+        return_value=1,
+    ), patch(
+        "astraquant.ingestion.market_data.get_provider_ticker",
+        return_value="RELIANCE.NS",
+    ), patch(
+        "astraquant.ingestion.market_data.insert_daily_prices",
+    ) as mock_insert:
+
+        result = ingest_historical_market_data(
+            provider=provider,
+            engine=engine,
+            exchange="NSE",
+            symbol="RELIANCE",
+            start_date=date(2025, 9, 1),
+            end_date=date(2025, 9, 3),
+        )
+
+    assert result == 2
+
+    provider.fetch_daily_prices.assert_called_once_with(
+        "RELIANCE.NS",
+        start_date=date(2025, 9, 1),
+        end_date=date(2025, 9, 3),
+    )
+
+    mock_insert.assert_called_once()
