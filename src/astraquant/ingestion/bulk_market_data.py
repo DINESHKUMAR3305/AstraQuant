@@ -34,6 +34,18 @@ def select_securities(
 
     return selected
 
+def iter_security_batches(
+    securities: list[dict],
+    batch_size: int,
+):
+    """Yield securities in batches."""
+    if batch_size <= 0:
+        raise ValueError("BATCH_SIZE must be greater than zero")
+
+    for start in range(0, len(securities), batch_size):
+        yield securities[start:start + batch_size]
+
+
 
 def ingest_bulk_market_data(
     provider: MarketDataProvider,

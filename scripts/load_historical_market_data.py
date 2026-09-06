@@ -1,6 +1,7 @@
+import argparse
 import logging
 import os
-import sys
+
 from datetime import date
 
 from dotenv import load_dotenv
@@ -9,13 +10,38 @@ from astraquant.database.repository import (
     get_all_securities,
     get_engine,
 )
-from astraquant.ingestion.bulk_market_data import select_securities
+from astraquant.ingestion.bulk_market_data import (
+    iter_security_batches,
+)
 from astraquant.ingestion.historical_market_data import (
     load_historical_market_data,
 )
 from astraquant.providers.yahoo import YahooFinanceProvider
 
+
 logger = logging.getLogger(__name__)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Load historical market data for NSE securities."
+    )
+
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of securities to process.",
+    )
+
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Number of securities to skip before processing.",
+    )
+
+    return parser.parse_args()
 
 
 def main():
@@ -28,9 +54,12 @@ def main():
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
+    args = parse_args()
+
     start_date = date.fromisoformat(
         os.environ["HISTORICAL_START_DATE"]
     )
+
     end_date = date.fromisoformat(
         os.environ["HISTORICAL_END_DATE"]
     )
@@ -38,13 +67,6 @@ def main():
     batch_size = int(
         os.getenv("HISTORICAL_BATCH_SIZE", "25")
     )
-
-    offset = int(sys.argv[1]) if len(sys.argv) >= 2 else 0
-
-    if len(sys.argv) > 2:
-        raise ValueError(
-            "Usage: python scripts/load_historical_market_data.py [OFFSET]"
-        )
 
     if start_date >= end_date:
         raise ValueError(
@@ -57,8 +79,15 @@ def main():
             "HISTORICAL_BATCH_SIZE must be greater than zero"
         )
 
-    if offset < 0:
-        raise ValueError("OFFSET cannot be negative")
+    if args.limit is not None and args.limit <= 0:
+        raise ValueError(
+            "--limit must be greater than zero"
+        )
+
+    if args.offset < 0:
+        raise ValueError(
+            "--offset cannot be negative"
+        )
 
     database_url = os.getenv("DATABASE_URL")
 
@@ -86,52 +115,80 @@ def main():
 
     all_securities = get_all_securities(engine)
 
-    securities = select_securities(
-        all_securities,
-        limit=batch_size,
-        offset=offset,
-    )
+    selected_securities = all_securities[args.offset:]
 
-    if not securities:
+    if args.limit is not None:
+        selected_securities = selected_securities[:args.limit]
+
+    if not selected_securities:
         print(
-            f"No securities selected for offset {offset} "
+            f"No securities selected for offset {args.offset} "
             f"from {len(all_securities)} available securities."
         )
         return
 
-    print(
-        f"Processing {len(securities)} securities"
-    )
-    print(
-        f"Date range: {start_date} → {end_date}"
-    )
-    print(f"Batch size: {batch_size}")
-    print(f"Offset:     {offset}")
-    print(f"Provider:   {provider_name}")
-    print(f"Data source: {data_source}")
+    print(f"Total securities: {len(all_securities)}")
+    print(f"Processing:       {len(selected_securities)}")
+    print(f"Date range:       {start_date} → {end_date}")
+    print(f"Batch size:       {batch_size}")
+    print(f"Offset:           {args.offset}")
+    print(f"Provider:         {provider_name}")
+    print(f"Data source:      {data_source}")
 
     provider = YahooFinanceProvider()
 
-    result = load_historical_market_data(
-        provider=provider,
-        engine=engine,
-        securities=securities,
-        start_date=start_date,
-        end_date=end_date,
-        data_source=data_source,
-    )
+    overall_successful = 0
+    overall_skipped = 0
+    overall_failed = 0
+    overall_rows = 0
+    overall_failures = []
+
+    for batch_number, batch in enumerate(
+        iter_security_batches(
+            selected_securities,
+            batch_size=batch_size,
+        ),
+        start=1,
+    ):
+        print(
+            f"\n=== Batch {batch_number} "
+            f"({len(batch)} securities) ==="
+        )
+
+        result = load_historical_market_data(
+            provider=provider,
+            engine=engine,
+            securities=batch,
+            start_date=start_date,
+            end_date=end_date,
+            data_source=data_source,
+        )
+
+        overall_successful += result["successful"]
+        overall_skipped += result["skipped"]
+        overall_failed += result["failed"]
+        overall_rows += result["total_rows"]
+        overall_failures.extend(result["failures"])
+
+        print(
+            f"Batch {batch_number} summary: "
+            f"successful={result['successful']} "
+            f"skipped={result['skipped']} "
+            f"failed={result['failed']} "
+            f"rows={result['total_rows']}"
+        )
 
     print("\nHistorical Ingestion Summary")
     print("----------------------------")
-    print(f"Successful: {result['successful']}")
-    print(f"Skipped:    {result['skipped']}")
-    print(f"Failed:     {result['failed']}")
-    print(f"Total rows: {result['total_rows']}")
+    print(f"Successful: {overall_successful}")
+    print(f"Skipped:    {overall_skipped}")
+    print(f"Failed:     {overall_failed}")
+    print(f"Total rows: {overall_rows}")
 
-    if result["failures"]:
+    if overall_failures:
         print("\nFailures:")
 
-        for failure in result["failures"]:
+        for failure in overall_failures:
             print(
                 f"- {failure['symbol']}: "
                 f"{failure['error']}"
