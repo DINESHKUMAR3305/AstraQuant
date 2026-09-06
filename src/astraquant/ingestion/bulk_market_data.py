@@ -1,7 +1,11 @@
+import logging
 from datetime import date
 
 from astraquant.ingestion.market_data import ingest_market_data
 from astraquant.providers.base import MarketDataProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 def ingest_bulk_market_data(
@@ -19,13 +23,17 @@ def ingest_bulk_market_data(
     total_rows = 0
     failures = []
 
-    for security in securities:
+    total_securities = len(securities)
+
+    for index, security in enumerate(securities, start=1):
+        symbol = security["symbol"]
+
         try:
             rows = ingest_market_data(
                 provider=provider,
                 engine=engine,
                 exchange=security["exchange"],
-                symbol=security["symbol"],
+                symbol=symbol,
                 start_date=start_date,
                 end_date=end_date,
                 data_source=data_source,
@@ -34,27 +42,44 @@ def ingest_bulk_market_data(
             successful += 1
             total_rows += rows
 
-            print(
-                f"{security['symbol']}: {rows} rows"
+            message = (
+                f"[{index}/{total_securities}] "
+                f"{symbol}: {rows} rows"
             )
+
+            print(message)
+            logger.info(message)
 
         except Exception as exc:
             failed += 1
 
-            failures.append(
-                {
-                    "symbol": security["symbol"],
-                    "error": str(exc),
-                }
+            failure = {
+                "symbol": symbol,
+                "error": str(exc),
+            }
+
+            failures.append(failure)
+
+            message = (
+                f"[{index}/{total_securities}] "
+                f"{symbol}: FAILED - {exc}"
             )
 
-            print(
-                f"{security['symbol']}: FAILED - {exc}"
-            )
+            print(message)
+            logger.error(message)
 
-    return {
+    summary = {
         "successful": successful,
         "failed": failed,
         "total_rows": total_rows,
         "failures": failures,
     }
+
+    logger.info(
+        "Ingestion completed: successful=%s failed=%s total_rows=%s",
+        successful,
+        failed,
+        total_rows,
+    )
+
+    return summary

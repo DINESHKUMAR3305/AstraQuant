@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 from datetime import date
 
 from dotenv import load_dotenv
@@ -10,6 +11,11 @@ from astraquant.providers.yahoo import YahooFinanceProvider
 
 
 def main():
+    logging.basicConfig(
+        filename="logs/market_data_ingestion.log",
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
     if len(sys.argv) not in (3, 4):
         raise ValueError(
                 "Usage: python scripts/load_bulk_market_data.py START_DATE END_DATE [LIMIT]"
