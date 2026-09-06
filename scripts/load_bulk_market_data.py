@@ -20,10 +20,10 @@ def main():
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
-    if len(sys.argv) not in (3, 4):
+    if len(sys.argv) not in (3, 4, 5):
         raise ValueError(
             "Usage: python scripts/load_bulk_market_data.py "
-            "START_DATE END_DATE [LIMIT]"
+            "START_DATE END_DATE [LIMIT] [OFFSET]"
         )
 
     start_date = date.fromisoformat(sys.argv[1])
@@ -32,9 +32,17 @@ def main():
     if start_date >= end_date:
         raise ValueError("START_DATE must be before END_DATE")
 
-    limit = int(sys.argv[3]) if len(sys.argv) == 4 else None
+    limit = int(sys.argv[3]) if len(sys.argv) >= 4 else None
+    offset = int(sys.argv[4]) if len(sys.argv) == 5 else 0
+
+    if limit is not None and limit <= 0:
+        raise ValueError("LIMIT must be greater than zero")
+
+    if offset < 0:
+        raise ValueError("OFFSET cannot be negative")
 
     database_url = os.getenv("DATABASE_URL")
+
     if not database_url:
         raise RuntimeError("DATABASE_URL is not configured")
 
@@ -57,10 +65,20 @@ def main():
 
     securities = get_all_securities(engine)
 
+    if offset >= len(securities):
+        print(
+            f"Offset {offset} is beyond the available "
+            f"securities ({len(securities)})."
+        )
+        return
+
+    securities = securities[offset:]
+
     if limit is not None:
         securities = securities[:limit]
 
     print(f"Processing {len(securities)} securities")
+    print(f"Offset:   {offset}")
     print(f"Provider: {provider_name}")
     print(f"Data source: {data_source}")
 
@@ -84,8 +102,12 @@ def main():
 
     if result["failures"]:
         print("\nFailures:")
+
         for failure in result["failures"]:
-            print(f"- {failure['symbol']}: {failure['error']}")
+            print(
+                f"- {failure['symbol']}: "
+                f"{failure['error']}"
+            )
 
 
 if __name__ == "__main__":
