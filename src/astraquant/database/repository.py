@@ -171,3 +171,24 @@ def get_provider_ticker(
         )
 
     return provider_ticker
+
+def get_all_securities(
+    engine: Engine,
+) -> list[dict]:
+    """Return all securities with provider tickers."""
+
+    query = text("""
+        SELECT
+            security_id,
+            exchange,
+            symbol,
+            provider_ticker
+        FROM securities
+        WHERE provider_ticker IS NOT NULL
+        ORDER BY security_id
+    """)
+
+    with engine.connect() as connection:
+        rows = connection.execute(query).mappings().all()
+
+    return [dict(row) for row in rows]
