@@ -1,58 +1,82 @@
 from datetime import date
-from unittest.mock import Mock
-
-import pandas as pd
+from unittest.mock import Mock, patch
 
 from astraquant.ingestion.market_data import ingest_market_data
 
 
 def test_ingest_market_data():
     provider = Mock()
-
-    provider.fetch_daily_prices.return_value = pd.DataFrame(
-        {
-            "date": [
-                date(2026, 9, 1),
-                date(2026, 9, 2),
-            ],
-            "open": [100.0, 103.0],
-            "high": [105.0, 106.0],
-            "low": [99.0, 102.0],
-            "close": [103.0, 105.0],
-            "volume": [100000, 120000],
-        }
-    )
-
     engine = Mock()
 
-    import astraquant.ingestion.market_data as market_data
+    data = Mock()
+    data.__len__ = Mock(return_value=2)
 
-    market_data.get_security_id = Mock(
-        return_value=1
-    )
+    provider.fetch_daily_prices.return_value = data
 
-    market_data.get_provider_ticker = Mock(
-        return_value="RELIANCE.NS"
-    )
+    with patch(
+        "astraquant.ingestion.market_data.get_security_id",
+        return_value=1,
+    ), patch(
+        "astraquant.ingestion.market_data.get_provider_ticker",
+        return_value="RELIANCE.NS",
+    ), patch(
+        "astraquant.ingestion.market_data.validate_daily_prices"
+    ), patch(
+        "astraquant.ingestion.market_data.insert_daily_prices"
+    ):
 
-    market_data.insert_daily_prices = Mock()
+        result = ingest_market_data(
+            provider=provider,
+            engine=engine,
+            exchange="NSE",
+            symbol="RELIANCE",
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 6),
+        )
 
-    rows = ingest_market_data(
-        provider=provider,
-        engine=engine,
-        exchange="NSE",
-        symbol="RELIANCE",
-        start_date=date(2026, 9, 1),
-        end_date=date(2026, 9, 3),
-        data_source="test",
-    )
-
-    assert rows == 2
-
+    assert result == 2
     provider.fetch_daily_prices.assert_called_once_with(
         "RELIANCE.NS",
         start_date=date(2026, 9, 1),
-        end_date=date(2026, 9, 3),
+        end_date=date(2026, 9, 6),
     )
 
-    market_data.insert_daily_prices.assert_called_once()
+
+def test_ingest_market_data_retries_after_provider_failure():
+    provider = Mock()
+    engine = Mock()
+
+    valid_data = Mock()
+    valid_data.__len__ = Mock(return_value=2)
+
+    provider.fetch_daily_prices.side_effect = [
+        ValueError("temporary failure"),
+        valid_data,
+    ]
+
+    with patch(
+        "astraquant.ingestion.market_data.validate_daily_prices"
+    ), patch(
+        "astraquant.ingestion.market_data.insert_daily_prices"
+    ), patch(
+        "astraquant.ingestion.market_data.get_security_id",
+        return_value=1,
+    ), patch(
+        "astraquant.ingestion.market_data.get_provider_ticker",
+        return_value="RELIANCE.NS",
+    ), patch(
+        "astraquant.ingestion.market_data.time.sleep"
+    ) as mock_sleep:
+
+        result = ingest_market_data(
+            provider=provider,
+            engine=engine,
+            exchange="NSE",
+            symbol="RELIANCE",
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 6),
+        )
+
+    assert result == 2
+    assert provider.fetch_daily_prices.call_count == 2
+    mock_sleep.assert_called_once_with(2)
