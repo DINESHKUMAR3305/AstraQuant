@@ -1,14 +1,38 @@
 import logging
 from datetime import date
 
-from astraquant.ingestion.market_data import ingest_market_data
-from astraquant.providers.base import MarketDataProvider
 from astraquant.ingestion.market_data import (
     NoMarketDataError,
     ingest_market_data,
 )
+from astraquant.providers.base import MarketDataProvider
+
 
 logger = logging.getLogger(__name__)
+
+
+def select_securities(
+    securities: list[dict],
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict]:
+    """Return a batch of securities using offset and limit."""
+
+    if limit is not None and limit <= 0:
+        raise ValueError("LIMIT must be greater than zero")
+
+    if offset < 0:
+        raise ValueError("OFFSET cannot be negative")
+
+    if offset >= len(securities):
+        return []
+
+    selected = securities[offset:]
+
+    if limit is not None:
+        selected = selected[:limit]
+
+    return selected
 
 
 def ingest_bulk_market_data(
@@ -53,7 +77,7 @@ def ingest_bulk_market_data(
 
             print(message)
             logger.info(message)
-            
+
         except NoMarketDataError as exc:
             skipped += 1
 
@@ -92,9 +116,11 @@ def ingest_bulk_market_data(
     }
 
     logger.info(
-        "Ingestion completed: successful=%s failed=%s total_rows=%s",
+        "Ingestion completed: "
+        "successful=%s failed=%s skipped=%s total_rows=%s",
         successful,
         failed,
+        skipped,
         total_rows,
     )
 
