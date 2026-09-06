@@ -50,6 +50,7 @@ def load_market_data(
         engine,
         security_id=security_id,
         data=data,
+        data_source="yahoo_finance",
     )
 
     print(f"Loaded {len(data)} rows for {ticker}")

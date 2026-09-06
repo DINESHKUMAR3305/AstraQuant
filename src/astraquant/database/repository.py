@@ -65,6 +65,7 @@ def insert_daily_prices(
     engine: Engine,
     security_id: int,
     data,
+    data_source: str,
 ) -> None:
     query = text("""
         INSERT INTO daily_prices (
@@ -74,7 +75,8 @@ def insert_daily_prices(
             high,
             low,
             close,
-            volume
+            volume,
+            data_source
         )
         VALUES (
             :security_id,
@@ -83,7 +85,8 @@ def insert_daily_prices(
             :high,
             :low,
             :close,
-            :volume
+            :volume,
+            :data_source
         )
         ON CONFLICT (security_id, trading_date)
         DO UPDATE SET
@@ -91,7 +94,9 @@ def insert_daily_prices(
             high = EXCLUDED.high,
             low = EXCLUDED.low,
             close = EXCLUDED.close,
-            volume = EXCLUDED.volume
+            volume = EXCLUDED.volume,
+            data_source = EXCLUDED.data_source,
+            ingested_at = CURRENT_TIMESTAMP
     """)
 
     records = [
@@ -103,6 +108,7 @@ def insert_daily_prices(
             "low": float(row.low),
             "close": float(row.close),
             "volume": int(row.volume),
+            "data_source": data_source,
         }
         for row in data.itertuples(index=False)
     ]
